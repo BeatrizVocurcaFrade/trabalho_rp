@@ -47,10 +47,12 @@ jobs:
           python - <<'PY'
           import mimetypes
           import os
+          import sys
           from pathlib import Path
 
           from google.oauth2 import service_account
           from googleapiclient.discovery import build
+          from googleapiclient.errors import HttpError
           from googleapiclient.http import MediaFileUpload
 
           SCOPES = ["https://www.googleapis.com/auth/drive"]
@@ -62,6 +64,28 @@ jobs:
           )
           drive = build("drive", "v3", credentials=creds)
 
+          def api_call(request):
+              return request.execute(num_retries=3)
+
+          try:
+              folder_info = api_call(
+                  drive.files().get(
+                      fileId=ROOT_FOLDER_ID,
+                      fields="id,name,driveId",
+                      supportsAllDrives=True,
+                  )
+              )
+          except HttpError as err:
+              print(f"Failed to access GDRIVE_FOLDER_ID={ROOT_FOLDER_ID}: {err}")
+              sys.exit(1)
+
+          if not folder_info.get("driveId"):
+              print(
+                  "GDRIVE_FOLDER_ID is not inside a Shared Drive. "
+                  "Service Account uploads require a Shared Drive folder."
+              )
+              sys.exit(1)
+
           def find_child(parent_id: str, name: str, mime_type: str | None = None):
               escaped_name = name.replace("'", "\\'")
               q = [
@@ -71,12 +95,16 @@ jobs:
               ]
               if mime_type:
                   q.append(f"mimeType = '{mime_type}'")
-              resp = drive.files().list(
-                  q=" and ".join(q),
-                  spaces="drive",
-                  fields="files(id,name,mimeType)",
-                  pageSize=1,
-              ).execute()
+              resp = api_call(
+                  drive.files().list(
+                      q=" and ".join(q),
+                      spaces="drive",
+                      includeItemsFromAllDrives=True,
+                      supportsAllDrives=True,
+                      fields="files(id,name,mimeType,driveId)",
+                      pageSize=1,
+                  )
+              )
               files = resp.get("files", [])
               return files[0] if files else None
 
@@ -85,14 +113,17 @@ jobs:
               existing = find_child(parent_id, name, folder_mime)
               if existing:
                   return existing["id"]
-              created = drive.files().create(
-                  body={
-                      "name": name,
-                      "mimeType": folder_mime,
-                      "parents": [parent_id],
-                  },
-                  fields="id",
-              ).execute()
+              created = api_call(
+                  drive.files().create(
+                      body={
+                          "name": name,
+                          "mimeType": folder_mime,
+                          "parents": [parent_id],
+                      },
+                      fields="id",
+                      supportsAllDrives=True,
+                  )
+              )
               return created["id"]
 
           def upsert_file(parent_id: str, local_path: Path, file_name: str):
@@ -101,17 +132,23 @@ jobs:
               media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=False)
 
               if existing and existing.get("mimeType") != "application/vnd.google-apps.folder":
-                  drive.files().update(
-                      fileId=existing["id"],
-                      media_body=media,
-                  ).execute()
+                  api_call(
+                      drive.files().update(
+                          fileId=existing["id"],
+                          media_body=media,
+                          supportsAllDrives=True,
+                      )
+                  )
                   print(f"UPDATED: {local_path}")
               else:
-                  drive.files().create(
-                      body={"name": file_name, "parents": [parent_id]},
-                      media_body=media,
-                      fields="id",
-                  ).execute()
+                  api_call(
+                      drive.files().create(
+                          body={"name": file_name, "parents": [parent_id]},
+                          media_body=media,
+                          fields="id",
+                          supportsAllDrives=True,
+                      )
+                  )
                   print(f"CREATED: {local_path}")
 
           repo_root = Path(".").resolve()
@@ -142,7 +179,15 @@ jobs:
                       continue
                   if local_path.suffix in ignore_suffixes:
                       continue
-                  upsert_file(parent_id, local_path, file_name)
+                  try:
+                      upsert_file(parent_id, local_path, file_name)
+                  except HttpError as err:
+                      if "storageQuotaExceeded" in str(err):
+                          print(
+                              "Upload failed with storageQuotaExceeded. "
+                              "Confirm GDRIVE_FOLDER_ID is a Shared Drive folder and the service account has Content manager access."
+                          )
+                      raise
           PY
 
       - name: Cleanup credential file
