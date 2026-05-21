@@ -1,8 +1,10 @@
-name: Sync Repository to Google Drive
+name: Sync Notebook to Google Drive
 
 on:
   push:
     branches: ["main"]
+    paths:
+      - "notebook/**.ipynb"
   workflow_dispatch:
 
 permissions:
@@ -16,7 +18,6 @@ jobs:
       GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
       GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
       GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-      TARGET_ROOT_NAME: Trabalho
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -43,7 +44,6 @@ jobs:
           done
 
           python - <<'PY'
-          import mimetypes
           import os
           import sys
           from pathlib import Path
@@ -54,7 +54,6 @@ jobs:
           from googleapiclient.http import MediaFileUpload
 
           ROOT_FOLDER_ID = os.environ["GDRIVE_FOLDER_ID"]
-          TARGET_ROOT_NAME = os.environ.get("TARGET_ROOT_NAME", "repo-sync")
 
           creds = Credentials(
               token=None,
@@ -88,70 +87,26 @@ jobs:
               files = resp.get("files", [])
               return files[0] if files else None
 
-          def ensure_folder(parent_id: str, name: str) -> str:
-              folder_mime = "application/vnd.google-apps.folder"
-              existing = find_child(parent_id, name, folder_mime)
-              if existing:
-                  return existing["id"]
-              created = api_call(
-                  drive.files().create(
-                      body={
-                          "name": name,
-                          "mimeType": folder_mime,
-                          "parents": [parent_id],
-                      },
-                      fields="id",
-                  )
-              )
-              return created["id"]
-
           def upsert_file(parent_id: str, local_path: Path, file_name: str):
               existing = find_child(parent_id, file_name)
-              mime_type, _ = mimetypes.guess_type(str(local_path))
-              media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=False)
+              media = MediaFileUpload(str(local_path), mimetype="application/octet-stream", resumable=False)
 
               if existing and existing.get("mimeType") != "application/vnd.google-apps.folder":
-                  api_call(
-                      drive.files().update(
-                          fileId=existing["id"],
-                          media_body=media,
-                      )
-                  )
-                  print(f"UPDATED: {local_path}")
+                  api_call(drive.files().update(fileId=existing["id"], media_body=media))
+                  print(f"UPDATED: {file_name}")
               else:
-                  api_call(
-                      drive.files().create(
-                          body={"name": file_name, "parents": [parent_id]},
-                          media_body=media,
-                          fields="id",
-                      )
-                  )
-                  print(f"CREATED: {local_path}")
+                  api_call(drive.files().create(
+                      body={"name": file_name, "parents": [parent_id]},
+                      media_body=media,
+                      fields="id",
+                  ))
+                  print(f"CREATED: {file_name}")
 
-          repo_root = Path(".").resolve()
-          drive_repo_root_id = ensure_folder(ROOT_FOLDER_ID, TARGET_ROOT_NAME)
+          notebook_path = Path("notebook/deteccao_malha_viaria.ipynb")
+          if not notebook_path.exists():
+              print(f"Arquivo nao encontrado: {notebook_path}")
+              sys.exit(1)
 
-          ignore_dirs = {
-              ".git",
-              ".github",
-              "__pycache__",
-              ".pytest_cache",
-              ".Rproj.user",
-          }
-          ignore_suffixes = {".aux", ".fdb_latexmk", ".fls", ".log"}
-
-          for root, dirs, files in os.walk(repo_root):
-              dirs[:] = [d for d in dirs if d not in ignore_dirs]
-              rel_dir = Path(root).relative_to(repo_root)
-
-              parent_id = drive_repo_root_id
-              if rel_dir.parts:
-                  for part in rel_dir.parts:
-                      parent_id = ensure_folder(parent_id, part)
-
-              for file_name in files:
-                  local_path = Path(root) / file_name
-                  if local_path.suffix in ignore_suffixes:
-                      continue
-                  upsert_file(parent_id, local_path, file_name)
+          upsert_file(ROOT_FOLDER_ID, notebook_path, notebook_path.name)
+          print("Concluido.")
           PY
