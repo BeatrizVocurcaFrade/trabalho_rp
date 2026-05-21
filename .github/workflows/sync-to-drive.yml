@@ -12,7 +12,9 @@ jobs:
   sync-to-drive:
     runs-on: ubuntu-latest
     env:
-      GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+      GDRIVE_CLIENT_ID: ${{ secrets.GDRIVE_CLIENT_ID }}
+      GDRIVE_CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
+      GDRIVE_REFRESH_TOKEN: ${{ secrets.GDRIVE_REFRESH_TOKEN }}
       GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
       TARGET_ROOT_NAME: Trabalho
     steps:
@@ -33,16 +35,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${GDRIVE_SERVICE_ACCOUNT_JSON}" ]; then
-            echo "Secret GDRIVE_SERVICE_ACCOUNT_JSON is missing."
-            exit 1
-          fi
-          if [ -z "${GDRIVE_FOLDER_ID}" ]; then
-            echo "Secret GDRIVE_FOLDER_ID is missing."
-            exit 1
-          fi
-
-          printf "%s" "$GDRIVE_SERVICE_ACCOUNT_JSON" > service-account.json
+          for var in GDRIVE_CLIENT_ID GDRIVE_CLIENT_SECRET GDRIVE_REFRESH_TOKEN GDRIVE_FOLDER_ID; do
+            if [ -z "${!var}" ]; then
+              echo "Secret $var is missing."
+              exit 1
+            fi
+          done
 
           python - <<'PY'
           import mimetypes
@@ -50,41 +48,25 @@ jobs:
           import sys
           from pathlib import Path
 
-          from google.oauth2 import service_account
+          from google.oauth2.credentials import Credentials
           from googleapiclient.discovery import build
           from googleapiclient.errors import HttpError
           from googleapiclient.http import MediaFileUpload
 
-          SCOPES = ["https://www.googleapis.com/auth/drive"]
           ROOT_FOLDER_ID = os.environ["GDRIVE_FOLDER_ID"]
           TARGET_ROOT_NAME = os.environ.get("TARGET_ROOT_NAME", "repo-sync")
 
-          creds = service_account.Credentials.from_service_account_file(
-              "service-account.json", scopes=SCOPES
+          creds = Credentials(
+              token=None,
+              refresh_token=os.environ["GDRIVE_REFRESH_TOKEN"],
+              token_uri="https://oauth2.googleapis.com/token",
+              client_id=os.environ["GDRIVE_CLIENT_ID"],
+              client_secret=os.environ["GDRIVE_CLIENT_SECRET"],
           )
           drive = build("drive", "v3", credentials=creds)
 
           def api_call(request):
               return request.execute(num_retries=3)
-
-          try:
-              folder_info = api_call(
-                  drive.files().get(
-                      fileId=ROOT_FOLDER_ID,
-                      fields="id,name,driveId",
-                      supportsAllDrives=True,
-                  )
-              )
-          except HttpError as err:
-              print(f"Failed to access GDRIVE_FOLDER_ID={ROOT_FOLDER_ID}: {err}")
-              sys.exit(1)
-
-          if not folder_info.get("driveId"):
-              print(
-                  "GDRIVE_FOLDER_ID is not inside a Shared Drive. "
-                  "Service Account uploads require a Shared Drive folder."
-              )
-              sys.exit(1)
 
           def find_child(parent_id: str, name: str, mime_type: str | None = None):
               escaped_name = name.replace("'", "\\'")
@@ -99,9 +81,7 @@ jobs:
                   drive.files().list(
                       q=" and ".join(q),
                       spaces="drive",
-                      includeItemsFromAllDrives=True,
-                      supportsAllDrives=True,
-                      fields="files(id,name,mimeType,driveId)",
+                      fields="files(id,name,mimeType)",
                       pageSize=1,
                   )
               )
@@ -121,7 +101,6 @@ jobs:
                           "parents": [parent_id],
                       },
                       fields="id",
-                      supportsAllDrives=True,
                   )
               )
               return created["id"]
@@ -136,7 +115,6 @@ jobs:
                       drive.files().update(
                           fileId=existing["id"],
                           media_body=media,
-                          supportsAllDrives=True,
                       )
                   )
                   print(f"UPDATED: {local_path}")
@@ -146,7 +124,6 @@ jobs:
                           body={"name": file_name, "parents": [parent_id]},
                           media_body=media,
                           fields="id",
-                          supportsAllDrives=True,
                       )
                   )
                   print(f"CREATED: {local_path}")
@@ -162,7 +139,6 @@ jobs:
               ".Rproj.user",
           }
           ignore_suffixes = {".aux", ".fdb_latexmk", ".fls", ".log"}
-          ignore_files = {"service-account.json"}
 
           for root, dirs, files in os.walk(repo_root):
               dirs[:] = [d for d in dirs if d not in ignore_dirs]
@@ -175,21 +151,7 @@ jobs:
 
               for file_name in files:
                   local_path = Path(root) / file_name
-                  if file_name in ignore_files:
-                      continue
                   if local_path.suffix in ignore_suffixes:
                       continue
-                  try:
-                      upsert_file(parent_id, local_path, file_name)
-                  except HttpError as err:
-                      if "storageQuotaExceeded" in str(err):
-                          print(
-                              "Upload failed with storageQuotaExceeded. "
-                              "Confirm GDRIVE_FOLDER_ID is a Shared Drive folder and the service account has Content manager access."
-                          )
-                      raise
+                  upsert_file(parent_id, local_path, file_name)
           PY
-
-      - name: Cleanup credential file
-        if: always()
-        run: rm -f service-account.json
