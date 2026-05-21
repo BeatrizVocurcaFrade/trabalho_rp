@@ -1,56 +1,150 @@
-name: Sync to Google Drive
+name: Sync Repository to Google Drive
 
 on:
   push:
-    branches:
-      - main  # Executa o pipeline quando há push na branch main
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-  upload-to-drive:
+  sync-to-drive:
     runs-on: ubuntu-latest
-
+    env:
+      GDRIVE_SERVICE_ACCOUNT_JSON: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_JSON }}
+      GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+      TARGET_ROOT_NAME: Trabalho
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.x'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install pydrive
+      - name: Install Google Drive dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install google-api-python-client google-auth
 
-    - name: Upload to Google Drive
-      env:
-        CLIENT_SECRET: ${{ secrets.GDRIVE_CLIENT_SECRET }}
-      run: |
-        python <<EOF
-        from pydrive.auth import GoogleAuth
-        from pydrive.drive import GoogleDrive
-        import os
+      - name: Sync files to Google Drive
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${GDRIVE_SERVICE_ACCOUNT_JSON}" ]; then
+            echo "Secret GDRIVE_SERVICE_ACCOUNT_JSON is missing."
+            exit 1
+          fi
+          if [ -z "${GDRIVE_FOLDER_ID}" ]; then
+            echo "Secret GDRIVE_FOLDER_ID is missing."
+            exit 1
+          fi
 
-        # Autenticação
-        gauth = GoogleAuth()
-        gauth.LoadCredentialsFile("mycreds.txt")
-        if gauth.credentials is None:
-            gauth.LocalWebserverAuth()
-        elif gauth.access_token_expired:
-            gauth.Refresh()
-        else:
-            gauth.Authorize()
-        gauth.SaveCredentialsFile("mycreds.txt")
+          printf "%s" "$GDRIVE_SERVICE_ACCOUNT_JSON" > service-account.json
 
-        drive = GoogleDrive(gauth)
+          python - <<'PY'
+          import mimetypes
+          import os
+          from pathlib import Path
 
-        # Caminho do repositório
-        repo_path = "."
-        for root, dirs, files in os.walk(repo_path):
-            for file in files:
-                file_path = os.path.join(root, file)
-                gfile = drive.CreateFile({'title': file})
-                gfile.SetContentFile(file_path)
-                gfile.Upload()
-        EOF
+          from google.oauth2 import service_account
+          from googleapiclient.discovery import build
+          from googleapiclient.http import MediaFileUpload
+
+          SCOPES = ["https://www.googleapis.com/auth/drive"]
+          ROOT_FOLDER_ID = os.environ["GDRIVE_FOLDER_ID"]
+          TARGET_ROOT_NAME = os.environ.get("TARGET_ROOT_NAME", "repo-sync")
+
+          creds = service_account.Credentials.from_service_account_file(
+              "service-account.json", scopes=SCOPES
+          )
+          drive = build("drive", "v3", credentials=creds)
+
+          def find_child(parent_id: str, name: str, mime_type: str | None = None):
+              escaped_name = name.replace("'", "\\'")
+              q = [
+                  f"'{parent_id}' in parents",
+                  f"name = '{escaped_name}'",
+                  "trashed = false",
+              ]
+              if mime_type:
+                  q.append(f"mimeType = '{mime_type}'")
+              resp = drive.files().list(
+                  q=" and ".join(q),
+                  spaces="drive",
+                  fields="files(id,name,mimeType)",
+                  pageSize=1,
+              ).execute()
+              files = resp.get("files", [])
+              return files[0] if files else None
+
+          def ensure_folder(parent_id: str, name: str) -> str:
+              folder_mime = "application/vnd.google-apps.folder"
+              existing = find_child(parent_id, name, folder_mime)
+              if existing:
+                  return existing["id"]
+              created = drive.files().create(
+                  body={
+                      "name": name,
+                      "mimeType": folder_mime,
+                      "parents": [parent_id],
+                  },
+                  fields="id",
+              ).execute()
+              return created["id"]
+
+          def upsert_file(parent_id: str, local_path: Path, file_name: str):
+              existing = find_child(parent_id, file_name)
+              mime_type, _ = mimetypes.guess_type(str(local_path))
+              media = MediaFileUpload(str(local_path), mimetype=mime_type, resumable=False)
+
+              if existing and existing.get("mimeType") != "application/vnd.google-apps.folder":
+                  drive.files().update(
+                      fileId=existing["id"],
+                      media_body=media,
+                  ).execute()
+                  print(f"UPDATED: {local_path}")
+              else:
+                  drive.files().create(
+                      body={"name": file_name, "parents": [parent_id]},
+                      media_body=media,
+                      fields="id",
+                  ).execute()
+                  print(f"CREATED: {local_path}")
+
+          repo_root = Path(".").resolve()
+          drive_repo_root_id = ensure_folder(ROOT_FOLDER_ID, TARGET_ROOT_NAME)
+
+          ignore_dirs = {
+              ".git",
+              ".github",
+              "__pycache__",
+              ".pytest_cache",
+              ".Rproj.user",
+          }
+          ignore_suffixes = {".aux", ".fdb_latexmk", ".fls", ".log"}
+          ignore_files = {"service-account.json"}
+
+          for root, dirs, files in os.walk(repo_root):
+              dirs[:] = [d for d in dirs if d not in ignore_dirs]
+              rel_dir = Path(root).relative_to(repo_root)
+
+              parent_id = drive_repo_root_id
+              if rel_dir.parts:
+                  for part in rel_dir.parts:
+                      parent_id = ensure_folder(parent_id, part)
+
+              for file_name in files:
+                  local_path = Path(root) / file_name
+                  if file_name in ignore_files:
+                      continue
+                  if local_path.suffix in ignore_suffixes:
+                      continue
+                  upsert_file(parent_id, local_path, file_name)
+          PY
+
+      - name: Cleanup credential file
+        if: always()
+        run: rm -f service-account.json
