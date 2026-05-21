@@ -1,4 +1,4 @@
-# Deteccao e Reconstrucao de Malha Viaria
+# Deteccao e Reconstrucão de Malha Viaria
 
 Projeto pratico da disciplina de Reconhecimento de Padroes para detectar vias em imagens de satelite, gerar uma segmentacao visual e reconstruir uma representacao em grafo da malha viaria.
 
