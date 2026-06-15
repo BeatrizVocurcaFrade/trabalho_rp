@@ -13,6 +13,10 @@
 \usepackage{tikz}
 \usepackage{xcolor}
 
+% Reduz espaco dos itens para slides densos
+\setlength{\itemsep}{2pt}
+\setlength{\parskip}{2pt}
+
 \graphicspath{{fig/}}
 
 % --- DUAS LOGOS ---
@@ -39,6 +43,407 @@
 \date{Junho de 2026}
 
 \begin{document}
+
+\maketitle
+
+\begin{frame}{Roteiro}
+\tableofcontents
+\end{frame}
+
+% ============================================================
+\section{Motivação e Problema}
+% ============================================================
+
+\begin{frame}{Motivação e Objetivo}
+\begin{columns}
+\column{0.58\textwidth}
+\begin{itemize}\small
+  \item Malha viária: infraestrutura crítica para planejamento urbano, logística e resposta a desastres
+  \item Mapeamento manual é \textbf{lento} e \textbf{custoso}
+  \item Imagens de satélite disponíveis em larga escala
+  \smallskip
+  \item \textbf{Objetivo:} extrair vias automaticamente a partir de pixels, sem anotação humana
+\end{itemize}
+\medskip
+\begin{block}{\small Saídas esperadas}\small
+  Máscara binária $\rightarrow$ Sobreposição $\rightarrow$ Esqueleto $\rightarrow$ Grafo (opcional)
+\end{block}
+\begin{alertblock}{\small Desafio}\small
+  Solo exposto, telhados e campos agrícolas têm aparência \textbf{similar} às vias.
+\end{alertblock}
+\column{0.4\textwidth}
+  \fbox{\includegraphics[width=\linewidth, height=4.2cm, keepaspectratio]{original.png}}
+  \\\centering\small Imagem de entrada
+\end{columns}
+\end{frame}
+
+\begin{frame}{Pipeline Geral}
+\centering
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, fill=blue!10, text width=2.1cm,
+              align=center, minimum height=0.85cm, font=\small},
+  arr/.style={->, thick}
+]
+  \node[box] (pre)  at (0,0)    {Pré-\\processamento};
+  \node[box] (det)  at (3.1,0)  {Detecção\\de vias};
+  \node[box] (pos)  at (6.2,0)  {Pós-\\processamento};
+  \node[box] (skel) at (9.3,0)  {Esqueleti-\\zação};
+  \node[box] (graf) at (12.4,0) {Extração\\de grafo};
+  \draw[arr] (pre)--(det); \draw[arr] (det)--(pos);
+  \draw[arr] (pos)--(skel); \draw[arr] (skel)--(graf);
+\end{tikzpicture}
+
+\bigskip
+{\small
+\begin{columns}
+\column{0.19\linewidth}\centering Bilateral filter\\CLAHE
+\column{0.19\linewidth}\centering \textcolor{red}{\textbf{foco das iterações}}
+\column{0.19\linewidth}\centering Morfologia\\Filtro de forma
+\column{0.19\linewidth}\centering Zhang-Suen
+\column{0.19\linewidth}\centering NetworkX\\Grau de pixel
+\end{columns}
+}
+\bigskip
+\centering\small Pré-processamento e detector evoluem a cada versão. \textbf{Prioridade:} qualidade da máscara -- grafo depende diretamente dela.
+\end{frame}
+
+% ============================================================
+\section{Versão 1 -- Cor, Textura e Agrupamento}
+% ============================================================
+
+\begin{frame}{Versão 1 -- Abordagem por Cor, Textura e GMM}
+\begin{columns}
+\column{0.50\textwidth}
+{\small
+\textbf{Atributos por pixel:} LAB, HSV, textura local (std em janela), CLAHE
+
+\textbf{Segmentação:} GMM não supervisionado
+
+\textbf{Pós-processamento:} morfologia + remoção de pequenos objetos
+
+\medskip
+\textbf{Resultado (imagem rural):}
+\begin{itemize}
+  \item Máscara cobre grandes manchas brancas
+  \item Campos agrícolas e solo exposto detectados como vias
+  \item Apenas traços finos corretos coincidem com estradas reais
+\end{itemize}
+}
+\column{0.48\textwidth}
+  \includegraphics[width=\linewidth, keepaspectratio]{v1_rural.png}
+  \\\centering\small V1 -- cena rural
+\end{columns}
+\end{frame}
+
+\begin{frame}{Versão 1 -- Limitações}
+\begin{columns}
+\column{0.50\textwidth}
+{\small
+\textbf{Causa dos erros:}
+\begin{itemize}
+  \item Solo agrícola e estradas de terra compartilham mesma faixa de cor
+  \item GMM agrupa por cor global, sem contexto espacial
+  \item Campos extensos (alta área, cor similar) passam como vias
+  \item Telhados e estacionamentos $\approx$ asfalto em ambiente urbano
+\end{itemize}
+
+\medskip
+\textbf{Diagnóstico:} modelo de cor é necessário mas \textbf{insuficiente}.\\
+Vias possuem geometria característica: \textbf{estreitas e elongadas}.
+}
+\column{0.48\textwidth}
+  \includegraphics[width=\linewidth, keepaspectratio]{v1_rural.png}
+  \\\centering\small Falsos positivos em campos e solo
+\end{columns}
+\begin{alertblock}{\small Conclusão}
+  {\small Necessário incorporar \textbf{informação estrutural} para discriminar vias de manchas de solo.}
+\end{alertblock}
+\end{frame}
+
+% ============================================================
+\section{Versão 2 -- Detecção Estrutural Multiescala}
+% ============================================================
+
+\begin{frame}{Versão 2 -- Hipótese Reformulada}
+
+\begin{center}
+\textit{``Uma via é uma estrutura \textbf{linear e estreita}.\\Cor é apenas evidência secundária.''}
+\end{center}
+
+\medskip
+\textbf{3 evidências independentes combinadas:}
+
+\medskip
+\begin{columns}
+\column{0.32\textwidth}\centering
+\textcolor{blue}{\textbf{Cue 1}}\\Frangi\\{\small Hessiana multi-escala\\ $\sigma \in \{2,4,7\}$ px}
+\column{0.32\textwidth}\centering
+\textcolor{blue}{\textbf{Cue 2}}\\Top-hat Direcional\\{\small Morfológico\\ 6 ângulos $\times$ 2 escalas}
+\column{0.32\textwidth}\centering
+\textcolor{blue}{\textbf{Cue 3}}\\Score de Cor\\{\small Função suave [0,1]\\ asfalto, terra, concreto}
+\end{columns}
+
+\bigskip
+\centering
+$\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \text{Cor}$
+
+\medskip
+{\small Limiar: percentil 82\% da imagem. Exclusões duras: vegetação, sombra, água.}
+\end{frame}
+
+\begin{frame}{Versão 2 -- Resultados Iniciais e Ajustes}
+\begin{columns}
+\column{0.48\textwidth}
+{\small
+\textbf{V2 inicial (rural):}
+\begin{itemize}
+  \item Máscara ainda ruidosa: blobs grandes de solo permanecem
+  \item Top-hat com linhas longas respondia a bordas de campos
+  \item Frangi com $\sigma$ grande demais detectava variações de campo
+\end{itemize}
+}
+  \includegraphics[width=\linewidth, keepaspectratio]{v2_rural.png}
+  \\\centering\small V2 -- rural (antes dos ajustes)
+\column{0.48\textwidth}
+{\small
+\textbf{Após ajustes de parâmetros:}
+\begin{itemize}
+  \item $\sigma$ reduzido para $\{2,4,7\}$: foca em vias estreitas
+  \item Linhas top-hat limitadas a 35 px
+  \item Transformada de distância filtra largura máxima ($\leq$14 px)
+  \item Resultado visivelmente mais limpo: menos blobs de campo
+\end{itemize}
+}
+  \includegraphics[width=\linewidth, keepaspectratio]{v2_rural_ajustes.png}
+  \\\centering\small V2 -- rural (após ajustes)
+\end{columns}
+\end{frame}
+
+\begin{frame}{Versão 2 -- Urbano e Tentativa de Grafo}
+\begin{columns}
+\column{0.48\textwidth}
+{\small
+\textbf{Cena urbana após ajustes:}
+\begin{itemize}
+  \item Ruas principais detectadas
+  \item Telhados de tonalidade cinza ainda confundem
+  \item Parâmetros únicos: compromisso entre urbano e rural
+\end{itemize}
+}
+  \includegraphics[width=\linewidth, keepaspectratio]{v2_urbana_ajustes.png}
+  \\\centering\small V2 -- urbana
+\column{0.48\textwidth}
+{\small
+\textbf{Tentativa de extração de grafo:}
+\begin{itemize}
+  \item Esqueleto + detecção de nós por grau 8-conectado
+  \item Grafo gerado, mas qualidade dependia diretamente da máscara
+  \item Máscara com falsos positivos $\Rightarrow$ grafo fragmentado e ruidoso
+  \item \textbf{Decisão:} priorizar qualidade da máscara antes de investir no grafo
+\end{itemize}
+}
+  \includegraphics[width=\linewidth, keepaspectratio]{v2_rural_ajustes_grafos.png}
+  \\\centering\small Grafo sobre máscara com ruído
+\end{columns}
+\end{frame}
+
+% ============================================================
+\section{Versão 3 -- Abordagem Híbrida Urbano/Rural}
+% ============================================================
+
+\begin{frame}{Versão 3 -- Motivação}
+{\small
+\begin{columns}
+\column{0.48\textwidth}
+\textbf{Problemas observados na V2:}
+\begin{itemize}
+  \item Vias urbanas \textbf{mais largas} perdidas ($\sigma$ muito pequeno)
+  \item Mesmo detector para cenas urbanas e rurais: parâmetros de compromisso
+  \item Grafo fragmentado: rotas curtas descartadas
+\end{itemize}
+\column{0.48\textwidth}
+\textbf{Hipótese da V3:}
+\begin{itemize}
+  \item Ambientes urbanos e rurais têm padrões visuais \textbf{distintos}
+  \item Tratar separadamente e combinar por fusão de scores
+  \item Usar Frangi em \textbf{ambas} polaridades (cristas claras \textit{e} escuras)
+\end{itemize}
+\end{columns}
+}
+\begin{block}{\small Mudança central}
+{\small Dois detectores paralelos (urbano + rural) com scores adaptativos, combinados por união ponderada.}
+\end{block}
+\end{frame}
+
+\begin{frame}{Versão 3 -- Arquitetura Dual}
+\centering
+{\small
+\begin{tikzpicture}[
+  box/.style={draw, rounded corners, fill=blue!10, text width=2.8cm,
+              align=center, minimum height=0.75cm, font=\footnotesize},
+  gbox/.style={draw, rounded corners, fill=green!12, text width=2.8cm,
+               align=center, minimum height=0.75cm, font=\footnotesize},
+  arr/.style={->, thick}
+]
+  \node[box] (feat) at (4.5, 2)  {Extração de features\\LAB, HSV, Frangi,\\textura, NDVI};
+  \node[box] (urb)  at (1.5, 0)  {Score urbano\\grayness + sat\\+ homog + linear};
+  \node[box] (rur)  at (7.5, 0)  {Score rural\\linearity + homog\\+ saturação};
+  \node[gbox] (fus) at (4.5,-1.8){União das máscaras\\+ abertura direcional\\+ morfologia};
+  \draw[arr] (feat)--(urb); \draw[arr] (feat)--(rur);
+  \draw[arr] (urb)--(fus); \draw[arr] (rur)--(fus);
+\end{tikzpicture}
+}
+\end{frame}
+
+\begin{frame}{Versão 3 -- Features e Scores}
+\begin{columns}
+\column{0.48\textwidth}
+{\small
+\textbf{Features por pixel:}
+\begin{itemize}
+  \item Canais LAB e HSV
+  \item Frangi duplo: cristas \textbf{claras} e \textbf{escuras} (Canny+CLAHE)
+  \item Textura local: desvio padrão em janela 15 px
+  \item NDVI-like: $(G-R)/(G+R)$ para vegetação
+
+\end{itemize}
+\medskip
+\textbf{Score urbano} (limiar: percentil 86\%):
+\[
+  0{,}38\!\cdot\!\text{grayness} + 0{,}25\!\cdot\!(1\!-\!s) + 0{,}20\!\cdot\!\text{homog} + 0{,}17\!\cdot\!\text{linear}
+\]
+}
+\column{0.48\textwidth}
+{\small
+\textbf{Score rural} (limiar: percentil 92\%):
+\[
+  0{,}65\!\cdot\!\text{linear} + 0{,}20\!\cdot\!\text{homog} + 0{,}15\!\cdot\!(1\!-\!s)
+\]
+
+\medskip
+\textbf{Abertura direcional orientada:}
+\begin{itemize}
+  \item Rural: 12 ângulos $\times$ 4 comprimentos
+  \item Urbano: 9 ângulos $\times$ 3 comprimentos
+  \item Seleciona estruturas alongadas e elimina manchas
+\end{itemize}
+
+\medskip
+\textbf{Exclusão:} NDVI $> 0{,}22$ $\Rightarrow$ vegetação removida
+}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Versão 3 -- Resultados: Cena Rural}
+\begin{columns}
+\column{0.98\textwidth}
+  \includegraphics[width=\linewidth, keepaspectratio]{v3_rural.png}
+\end{columns}
+{\small
+\begin{columns}
+\column{0.48\linewidth}
+\textbf{Observações:}
+\begin{itemize}
+  \item Máscara ainda com blobs extensos nas regiões de campo
+  \item Score rural captura linearidade, mas solo exposto saturado ainda engana
+  \item Vias visíveis na sobreposição, mas com muitos falsos positivos
+\end{itemize}
+\column{0.48\linewidth}
+\textbf{Causa provável:}
+\begin{itemize}
+  \item Frangi com cristas escuras responde a bordas de campos
+  \item NDVI-like não filtra solo de cor amarela/bege
+  \item Limiar percentil 92\% ainda permissivo para cenas com muito solo
+\end{itemize}
+\end{columns}
+}
+\end{frame}
+
+\begin{frame}{Versão 3 -- Resultados: Cenas Urbanas}
+\begin{columns}
+\column{0.48\textwidth}
+  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana.png}
+  \\\centering\small Cidade com malha radial
+\column{0.48\textwidth}
+  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana2.png}
+  \\\centering\small Cidade com malha em grade
+\end{columns}
+{\small
+\begin{columns}
+\column{0.48\linewidth}
+\textbf{Malha radial:} estrutura circular captada; avenidas principais detectadas; telhados geram ruído
+\column{0.48\linewidth}
+\textbf{Malha em grade:} ruas da grade visíveis na sobreposição; blobs de telhado ainda presentes; score urbano melhora em relação à V2
+\end{columns}
+}
+\end{frame}
+
+% ============================================================
+\section{Análise Comparativa}
+% ============================================================
+
+\begin{frame}{Evolução das Versões}
+\centering\small
+\begin{tabular}{lccc}
+\toprule
+\textbf{Característica} & \textbf{V1} & \textbf{V2} & \textbf{V3} \\
+\midrule
+Detector estrutural    & --              & Frangi + Top-hat        & Frangi duplo + abertura direcional \\
+Filtro de largura      & --              & Dist.\ transform        & Abertura direcional orientada \\
+Modelo de cor          & GMM (hard)      & Score suave [0,1]       & Score suave + NDVI \\
+Contexto urbano/rural  & Único           & Único                   & Dual (scores separados) \\
+Grafo                  & --              & Implementado            & Implementado \\
+Falsos positivos       & Muito alto      & Alto $\rightarrow$ Médio (ajustes)    & Médio (urbano melhor; rural difícil) \\
+\bottomrule
+\end{tabular}
+
+\bigskip
+{\small \textbf{Prioridade} em todas as versões: melhorar a máscara.\\O grafo foi implementado e testado, mas sua qualidade é diretamente dependente da máscara -- com falsos positivos, o grafo fica fragmentado e sem valor semântico.}
+\end{frame}
+
+% ============================================================
+\section{Conclusão}
+% ============================================================
+
+\begin{frame}{Lições e Conclusão}
+\begin{columns}
+\column{0.48\textwidth}
+{\small
+\textbf{Lições técnicas:}
+\begin{enumerate}
+  \item Cor/textura sozinhas insuficientes: solo $\approx$ via de terra
+  \item Filtros estruturais (Frangi, top-hat) essenciais para geometria de via
+  \item Transformada de distância discrimina largura real, não apenas bounding box
+  \item Contexto (urbano/rural) melhora especificidade do detector
+  \item Limiares adaptativos (percentil) generalizam melhor que valores fixos
+\end{enumerate}
+}
+\column{0.48\textwidth}
+{\small
+\textbf{Processo iterativo:}
+\begin{itemize}
+  \item Cada versão parte do diagnóstico da anterior
+  \item Visualização (máscara + sobreposição) acelera o ciclo
+\end{itemize}
+
+\medskip
+\textbf{Resultado final:}
+\begin{itemize}
+  \item Pipeline clássico (sem CNN) funcional para ambos contextos
+  \item Máscara melhorou consistentemente a cada iteração
+  \item Grafo implementado; qualidade limitada pela máscara
+  \item Código modular e reutilizável para próximas iterações
+\end{itemize}
+}
+\end{columns}
+
+\bigskip\centering
+\textbf{Obrigado!}\\[3mm]
+\small Beatriz Vocurca Frade \quad Johnatan Augusto M. do Carmo \quad Marina Alves Resende
+\end{frame}
+
+\end{document}
+
 
 % ============================================================
 % CAPA
