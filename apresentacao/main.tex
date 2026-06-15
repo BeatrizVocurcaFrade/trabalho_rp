@@ -288,7 +288,7 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
   \node[box] (feat) at (4.5, 2)  {Extração de features\\LAB, HSV, Frangi,\\textura, NDVI};
   \node[box] (urb)  at (1.5, 0)  {Score urbano\\grayness + sat\\+ homog + linear};
   \node[box] (rur)  at (7.5, 0)  {Score rural\\linearity + homog\\+ saturação};
-  \node[gbox] (fus) at (4.5,-1.8){União das máscaras\\+ abertura direcional\\+ morfologia};
+  \node[gbox] (fus) at (4.5,-1.8){Abertura direcional\\+ união das máscaras\\+ morfologia};
   \draw[arr] (feat)--(urb); \draw[arr] (feat)--(rur);
   \draw[arr] (urb)--(fus); \draw[arr] (rur)--(fus);
 \end{tikzpicture}
@@ -320,7 +320,7 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
 {\small
 \textbf{Score rural} (limiar: percentil 92\%):
 \[
-  0{,}65\!\cdot\!\text{linear} + 0{,}20\!\cdot\!\text{homog} + 0{,}15\!\cdot\!(1\!-\!s)
+  0{,}48\!\cdot\!\text{linear} + 0{,}24\!\cdot\!\text{grayness} + 0{,}16\!\cdot\!\text{homog} + 0{,}12\!\cdot\!(1\!-\!s)
 \]
 
 \medskip
@@ -355,7 +355,7 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
 \textbf{Causa provável:}
 \begin{itemize}
   \item Frangi com cristas escuras responde a bordas de campos
-  \item NDVI-like não filtra solo de cor amarela/bege
+  \item Ausência de informação contextual (largura e conectividade)
   \item Limiar percentil 92\% ainda permissivo para cenas com muito solo
 \end{itemize}
 \end{columns}
@@ -365,18 +365,18 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
 \begin{frame}{Versão 3 -- Resultados: Cenas Urbanas}
 \begin{columns}
 \column{0.48\textwidth}
-  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana.png}
+  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana2.png}
   \\\centering\small Cidade com malha radial
 \column{0.48\textwidth}
-  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana2.png}
+  \includegraphics[width=\linewidth, keepaspectratio]{v3_urbana.png}
   \\\centering\small Cidade com malha em grade
 \end{columns}
 {\small
 \begin{columns}
 \column{0.48\linewidth}
-\textbf{Malha radial:} estrutura circular captada; avenidas principais detectadas; telhados geram ruído
+\textbf{Malha radial:} estrutura circular captada; avenidas principais detectadas; muito ruído; ainda dependente de limiares; estrutura das ruas mal definida
 \column{0.48\linewidth}
-\textbf{Malha em grade:} ruas da grade visíveis na sobreposição; blobs de telhado ainda presentes; score urbano melhora em relação à V2
+\textbf{Malha em grade:} ruas quase visíveis na sobreposição; blobs de telhado ainda presentes; score urbano melhora em relação à V2 mas com baixa detecção de linearidade
 \end{columns}
 }
 \end{frame}
@@ -399,7 +399,7 @@ Filtro de largura      & --              & Dist.\ transform        & Abertura di
 Modelo de cor          & GMM (hard)      & Score suave [0,1]       & Score suave + NDVI \\
 Contexto urbano/rural  & Único           & Único                   & Dual (scores separados) \\
 Grafo                  & --              & Implementado            & Implementado \\
-Falsos positivos       & Muito alto      & Alto $\rightarrow$ Médio (ajustes)    & Médio (urbano melhor; rural difícil) \\
+Falsos positivos       & Muito alto      & Alto $\rightarrow$ Médio (ajustes)    & Médio (urbano melhor; rural difícil; muito ruído) \\
 \bottomrule
 \end{tabularx}
 }
@@ -418,30 +418,23 @@ Falsos positivos       & Muito alto      & Alto $\rightarrow$ Médio (ajustes)  
 \begin{columns}
 \column{0.48\textwidth}
 \textbf{Lições técnicas:}
-\begin{enumerate}
+\begin{itemize}
   \item Cor/textura sozinhas insuficientes: solo $\approx$ via de terra
   \item Filtros estruturais (Frangi, top-hat) essenciais para geometria de via
   \item Transformada de distância discrimina largura real, não apenas bounding box
   \item Contexto (urbano/rural) melhora especificidade do detector
-  \item Limiares adaptativos (percentil) generalizam melhor que valores fixos
-\end{enumerate}
-\column{0.48\textwidth}
-\textbf{Processo iterativo:}
-\begin{itemize}
-  \item Cada versão parte do diagnóstico da anterior
-  \item Visualização (máscara + sobreposição) acelera o ciclo
 \end{itemize}
-
-\smallskip
-\textbf{Resultado final:}
+\column{0.48\textwidth}
 \begin{itemize}
-  \item Pipeline clássico (sem CNN) funcional para ambos contextos
-  \item Máscara melhorou consistentemente a cada iteração
-  \item Grafo implementado; qualidade limitada pela máscara
-  \item Código modular e reutilizável para próximas iterações
+  \item Limiares adaptativos (percentil) generalizam melhor que valores fixos
+  \item Cada versão deve evoluir do diagnóstico da anterior
+  \item Visualização (máscara + sobreposição) acelera o ciclo
+  \item Pipeline clássico (sem CNN) pode ser funcional, mas menos eficiente
 \end{itemize}
 \end{columns}
 
+\vfill
+\vfill
 \vspace{-1mm}\centering
 \textbf{Obrigado!}\\[1mm]
 \tiny Beatriz Vocurca Frade \quad Johnatan Augusto M. do Carmo \quad Marina Alves Resende
