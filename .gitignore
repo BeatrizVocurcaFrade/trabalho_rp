@@ -9,3 +9,21 @@ relatorio/*.out
 relatorio/*.toc
 relatorio/*.pdf
 
+
+.vscode/
+node_modules/
+*.Rhistory
+*.RData
+*.aux
+*.log
+*.out
+*.lot
+*.lof
+*.ps
+*.tcp
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.snm
+*.nav
