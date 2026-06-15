@@ -10,32 +10,13 @@
 \usepackage{float}
 \usepackage{hyperref}
 \usepackage{enumitem}
-\usepackage{array}
-\usepackage{tabularx}
 
-\geometry{margin=2.4cm}
+\geometry{margin=2.5cm}
 \hypersetup{
     colorlinks=true,
-    linkcolor=blue!50!black,
-    urlcolor=blue!50!black,
-    citecolor=blue!50!black
-}
-\setlist[itemize]{noitemsep,topsep=3pt}
-\setlist[enumerate]{topsep=3pt}
-\urlstyle{same}
-\sloppy
-
-\newcommand{\resultimage}[2]{%
-    \IfFileExists{data/results/#1}{%
-        \includegraphics[#2]{data/results/#1}%
-    }{%
-        \IfFileExists{../data/results/#1}{%
-            \includegraphics[#2]{../data/results/#1}%
-        }{%
-            \fbox{\parbox[c][4.8cm][c]{0.86\textwidth}{\centering
-            Arquivo \texttt{#1} não encontrado. Execute \texttt{make run}.}}%
-        }%
-    }%
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue
 }
 
 \title{
@@ -46,8 +27,8 @@
 
 \author{
     Beatriz Vocurca Frade\\
-    Johnatan Augusto Moreira do Carmo\\
-    Marina Alves Resende
+    Johnatan Augusto\\
+    Mari Alvez Rezende
 }
 
 \date{\today}
@@ -57,7 +38,7 @@
 \maketitle
 
 \begin{abstract}
-Este relatório apresenta um sistema de visão computacional clássica para detectar vias em imagens de satélite, segmentar regiões candidatas a estradas e reconstruir uma representação topológica da malha viária. A solução combina pré-processamento, realce local de contraste, descritores de cor e textura, suporte de estruturas lineares, morfologia matemática, esqueletonização e extração de grafos. A abordagem foi escolhida por ser interpretável, reprodutível e executável sem treinamento supervisionado, o que permite discutir de forma transparente tanto os acertos quanto as limitações do método.
+Este trabalho apresenta um sistema de visão computacional clássica para detectar vias em imagens de satélite, segmentar regiões candidatas a estradas e reconstruir uma representação topológica da malha viária. A solução combina pré-processamento, realce de contraste, descritores simples de cor e textura, detecção de bordas, operações morfológicas, esqueletonização e extração de grafos. A abordagem foi escolhida por ser interpretável, não depender de treinamento supervisionado e permitir análise qualitativa sobre diferentes tipos de imagens urbanas e rurais.
 \end{abstract}
 
 \tableofcontents
@@ -65,239 +46,158 @@ Este relatório apresenta um sistema de visão computacional clássica para dete
 
 \section{Introdução}
 
-A detecção automática de vias em imagens de satélite é uma tarefa importante para atualização cartográfica, planejamento urbano, monitoramento de infraestrutura, logística, resposta a emergências e análise territorial. Em uma imagem aérea, estradas costumam aparecer como regiões alongadas, relativamente homogêneas e conectadas. Entretanto, essa aparência não é exclusiva de vias: telhados, estacionamentos, solo exposto, sombras, trilhas agrícolas e áreas pavimentadas podem produzir padrões visuais semelhantes.
+A detecção de vias em imagens de satélite é um problema relevante em sensoriamento remoto, planejamento urbano, atualização cartográfica e análise de infraestrutura. Apesar de parecer simples visualmente, o problema é desafiador porque ruas, estradas, telhados, solos expostos, sombras e áreas pavimentadas podem apresentar cores e texturas semelhantes.
 
-O objetivo deste trabalho é desenvolver um sistema capaz de:
-
-\begin{itemize}
-    \item identificar pixels candidatos a vias;
-    \item diferenciar visualmente vias asfaltadas e vias de terra;
-    \item sobrepor a detecção na imagem original;
-    \item reduzir a máscara segmentada a um esqueleto topológico;
-    \item exportar um grafo com vértices e arestas da malha viária.
-\end{itemize}
-
-O foco não é prometer desempenho perfeito em qualquer imagem, mas apresentar uma solução tecnicamente fundamentada, executável, analisável e compatível com o escopo da disciplina. Como não há, neste projeto, uma base anotada com máscaras de referência, a avaliação é qualitativa e baseada em métricas auxiliares produzidas pelo próprio pipeline.
+O objetivo deste trabalho é desenvolver um sistema capaz de identificar regiões correspondentes a vias, gerar uma sobreposição visual na imagem original e reconstruir uma estrutura de grafo representando a conectividade da malha viária. O foco da solução é a combinação de técnicas de Reconhecimento de Padrões e Visão Computacional clássica, buscando um equilíbrio entre explicabilidade, robustez e simplicidade de execução.
 
 \section{Fundamentação Teórica}
 
 \subsection{Reconhecimento de padrões em imagens}
 
-Reconhecimento de padrões em imagens consiste em identificar regularidades visuais associadas a uma classe de interesse. No caso de malhas viárias, os padrões relevantes incluem continuidade espacial, formato alongado, baixa variação local de textura, contraste com vegetação, presença de cruzamentos e repetição de estruturas lineares.
-
-Uma dificuldade central é que a classe ``via'' não é definida apenas por cor. Estradas asfaltadas podem ser cinzas, azuladas, escuras ou claras, enquanto estradas de terra podem variar entre tons amarelados, alaranjados e avermelhados. Por isso, a solução proposta combina múltiplos indícios visuais em vez de depender de um único limiar.
+O reconhecimento de padrões em imagens consiste em identificar regularidades visuais associadas a classes de interesse. No caso de vias, padrões relevantes incluem baixa variação local de textura, formas alongadas, continuidade espacial, contraste com vegetação e presença de interseções.
 
 \subsection{Segmentação}
 
-Segmentação é o processo de separar uma imagem em regiões semanticamente relevantes. Neste trabalho, a etapa principal é uma segmentação binária: cada pixel é classificado como candidato a via ou fundo. Em seguida, os pixels de via recebem uma classe visual: asfalto ou terra.
-
-A segmentação usa critérios de cor, textura e estrutura. Essa combinação reduz erros comuns de métodos puramente baseados em cor, pois uma região marrom só é tratada como possível via de terra quando também apresenta suporte linear.
+Segmentação é o processo de separar uma imagem em regiões com significado. Neste trabalho, a segmentação é binária no primeiro momento: pixels candidatos a via e pixels de fundo. Em seguida, uma etapa opcional classifica os pixels de via entre asfalto e terra por heurísticas de cor.
 
 \subsection{Morfologia matemática}
 
-Operações morfológicas processam a forma das regiões segmentadas. O fechamento conecta pequenas quebras e preenche falhas internas, enquanto a abertura remove ruídos isolados. Após essas operações, componentes conectados muito pequenos ou muito compactos são filtrados para diminuir falsos positivos.
+Operações morfológicas, como abertura e fechamento, são usadas para remover pequenos ruídos e conectar regiões próximas. O fechamento ajuda a preencher falhas em trechos de vias, enquanto a abertura reduz falsos positivos isolados.
 
 \subsection{Esqueletonização e grafos}
 
-A esqueletonização transforma uma máscara binária espessa em linhas de espessura unitária, preservando aproximadamente a conectividade original. Sobre esse esqueleto, o grau de cada pixel é estimado pela vizinhança 8-conectada:
-
-\begin{itemize}
-    \item grau 1: extremidade;
-    \item grau 2: ponto intermediário de uma via;
-    \item grau maior ou igual a 3: cruzamento ou bifurcação.
-\end{itemize}
-
-Agrupando pixels de extremidade e interseção, o sistema cria nós. Os caminhos entre esses nós formam as arestas do grafo. A saída final mantém o maior componente conectado do grafo extraído, aproximando o requisito de uma malha viária conectada.
+A esqueletonização reduz uma região binária a linhas de espessura unitária, preservando sua estrutura topológica aproximada. A partir do esqueleto, pixels com grau 1 representam extremidades e pixels com grau maior ou igual a 3 representam interseções. Os caminhos entre esses pontos são modelados como arestas de um grafo.
 
 \section{Metodologia}
 
-A implementação foi organizada em duas camadas. O módulo \texttt{src/malha\_viaria.py} contém o pipeline executável e reutilizável. O notebook \texttt{notebook/deteccao\_malha\_viaria.ipynb} funciona como roteiro didático para executar o sistema, visualizar resultados e interpretar as saídas.
-
-O fluxo completo pode ser executado pela linha de comando:
-
-\begin{verbatim}
-python3 -m src.malha_viaria \
-  --input data/raw \
-  --results data/results \
-  --graphs data/graphs
-\end{verbatim}
-
-Quando \texttt{data/raw/} está vazia, o sistema gera uma imagem sintética de demonstração. Essa imagem não substitui validação em dados reais, mas garante que a entrega seja executável e que todas as etapas do pipeline produzam arquivos de saída.
+A implementação está organizada no notebook \texttt{notebook/deteccao\_malha\_viaria.ipynb} e no módulo \texttt{src/malha\_viaria.py}. O fluxo completo é executado para todas as imagens colocadas em \texttt{data/raw/}, sem depender de nomes específicos de arquivo.
 
 \subsection{Pré-processamento}
 
-Cada imagem é carregada em RGB e, se necessário, redimensionada para limitar o custo computacional. Em seguida, aplica-se:
-
-\begin{itemize}
-    \item filtro bilateral, para reduzir ruído preservando bordas;
-    \item conversão para Lab, HSV e tons de cinza;
-    \item CLAHE no canal de luminância, para melhorar contraste local;
-    \item cálculo de desvio padrão local, usado como medida simples de textura.
-\end{itemize}
-
-O uso de diferentes espaços de cor facilita separar propriedades complementares: HSV destaca saturação e matiz; Lab permite realce de luminância; RGB preserva relações diretas entre canais.
+Cada imagem é carregada em RGB e, se necessário, redimensionada para limitar o custo computacional. Em seguida, aplica-se suavização bilateral, que reduz ruído preservando bordas. O canal de luminância no espaço Lab recebe CLAHE, uma técnica de equalização adaptativa que melhora contraste local sem alterar excessivamente a aparência global.
 
 \subsection{Segmentação de vias}
 
-A máscara candidata é construída pela combinação de regras:
+A segmentação combina os seguintes critérios:
 
-\begin{itemize}
-    \item pixels acinzentados, pouco saturados e homogêneos são candidatos a asfalto;
-    \item pixels de tons quentes, homogêneos e com predominância relativa de vermelho são candidatos a terra;
-    \item regiões com excesso de verde são removidas como provável vegetação;
-    \item sombras muito escuras são removidas;
-    \item vias de terra exigem suporte de estruturas lineares para evitar confusão com solo exposto.
+\begin{itemize}[noitemsep]
+    \item baixa saturação e pouca diferença entre canais RGB, padrão frequente em vias asfaltadas;
+    \item tons amarronzados e avermelhados, associados a vias de terra;
+    \item baixa variação local de intensidade, pois vias tendem a ser regiões relativamente homogêneas;
+    \item suporte de bordas por Canny para preservar estruturas lineares;
+    \item exclusão de vegetação por excesso de componente verde;
+    \item remoção de regiões muito escuras, que frequentemente correspondem a sombras fortes.
 \end{itemize}
 
-O suporte linear combina bordas Canny dilatadas em diferentes orientações com uma resposta simplificada baseada na Hessiana. A intenção é favorecer padrões compridos e estreitos, compatíveis com vias, em vez de manchas compactas.
+Após a combinação desses critérios, a máscara passa por fechamento, abertura e filtragem por componentes conectados. Componentes muito pequenos são removidos, exceto quando apresentam formato alongado, característica compatível com trechos de estrada.
 
-\subsection{Classificação asfalto/terra}
+\subsection{Classificação entre asfalto e terra}
 
-A classificação entre asfalto e terra é heurística e tem finalidade principalmente visual. Pixels de via com baixa saturação ou pequena diferença entre canais RGB são rotulados como asfalto. Pixels com matiz quente e maior saturação são rotulados como terra. Essa etapa é útil para interpretar a segmentação, mas é sensível a iluminação, resolução e aparência do solo.
+A classificação é heurística e opcional. Pixels de via com baixa saturação e pequena diferença entre canais são classificados como asfalto. Pixels de via com matiz mais quente, maior saturação e predominância relativa do canal vermelho são classificados como terra. Essa etapa é útil para visualização, mas possui limitações em imagens com iluminação irregular, solo exposto ou pavimentos envelhecidos.
 
-\subsection{Extração topológica}
+\subsection{Extração do grafo}
 
-Depois da segmentação, a máscara é esqueletonizada. O algoritmo calcula o grau de cada pixel do esqueleto, agrupa pixels de vértice em componentes conectados e percorre os caminhos entre componentes. Cada caminho encontrado é exportado como uma aresta com comprimento aproximado em pixels e geometria em coordenadas da imagem.
+Após a segmentação, a máscara é esqueletonizada. O grau de cada pixel do esqueleto é calculado pela vizinhança 8-conectada:
 
-\section{Descrição do Algoritmo}
+\begin{itemize}[noitemsep]
+    \item grau 1: extremidade;
+    \item grau 2: ponto intermediário de uma via;
+    \item grau maior ou igual a 3: interseção.
+\end{itemize}
 
-O pipeline implementado segue as etapas abaixo:
+Regiões conectadas de pixels de vértice são agrupadas e representadas por seus centroides. Em seguida, o algoritmo percorre os caminhos do esqueleto entre vértices e cria as arestas do grafo. Para atender ao requisito de grafo conectado, a saída final mantém o maior componente conectado extraído da máscara.
+
+\section{Descrição dos Algoritmos}
+
+A lista a seguir resume o pipeline proposto.
 
 \begin{enumerate}[label=\textbf{Etapa \arabic*:}, leftmargin=*]
-    \item listar imagens de entrada em \texttt{data/raw/};
-    \item usar uma imagem sintética se a pasta de entrada estiver vazia;
-    \item carregar e redimensionar a imagem;
-    \item aplicar filtro bilateral e CLAHE;
-    \item calcular descritores em RGB, HSV, Lab e tons de cinza;
-    \item estimar suporte linear por bordas direcionais e resposta de segunda ordem;
-    \item combinar regras para produzir a máscara candidata;
-    \item aplicar fechamento, abertura e filtragem por componentes conectados;
-    \item classificar vias em asfalto ou terra;
-    \item gerar máscara, segmentação colorida e sobreposição;
-    \item esqueletonizar a máscara;
-    \item extrair nós e arestas do grafo;
-    \item exportar imagens, JSON e GraphML.
+    \item Carregar todas as imagens de entrada em \texttt{data/raw/}.
+    \item Pré-processar cada imagem com redimensionamento, suavização bilateral e CLAHE.
+    \item Converter a imagem para os espaços RGB, HSV e Lab.
+    \item Calcular descritores de saturação, homogeneidade local, cor de solo e vegetação.
+    \item Combinar critérios em uma máscara candidata de vias.
+    \item Aplicar morfologia e filtragem por componentes conectados.
+    \item Classificar pixels de via como asfalto ou terra.
+    \item Gerar a sobreposição visual na imagem original.
+    \item Esqueletonizar a máscara e calcular graus dos pixels.
+    \item Criar vértices, percorrer caminhos e exportar o grafo.
 \end{enumerate}
 
-\section{Resultados}
-
-\subsection{Saídas geradas}
-
-Para cada imagem processada, o sistema produz os arquivos da Tabela~\ref{tab:saidas}.
-
-\begin{table}[H]
-    \centering
-    \caption{Arquivos gerados pelo pipeline.}
-    \label{tab:saidas}
-    \begin{tabularx}{\textwidth}{>{\ttfamily}lX}
-        \toprule
-        Arquivo & Conteúdo \\
-        \midrule
-        *\_mascara.png & máscara binária de vias detectadas \\
-        *\_segmentada.png & visualização por classe: asfalto em azul e terra em laranja \\
-        *\_sobreposicao.png & vias detectadas sobre a imagem original \\
-        *\_esqueleto.png & esqueleto usado para extração topológica \\
-        *\_grafo.png & grafo desenhado sobre a sobreposição \\
-        *\_grafo.json & nós, arestas, métricas e geometria dos segmentos \\
-        *\_grafo.graphml & grafo em formato compatível com ferramentas externas \\
-        \bottomrule
-    \end{tabularx}
-\end{table}
-
-\subsection{Visualização do pipeline}
-
 \begin{figure}[H]
     \centering
-    \resultimage{demo_sintetico_segmentada.png}{width=0.78\textwidth}
-    \caption{Segmentação colorida: asfalto em azul e terra em laranja.}
-    \label{fig:segmentada}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \resultimage{demo_sintetico_sobreposicao.png}{width=0.78\textwidth}
-    \caption{Sobreposição das vias detectadas na imagem de entrada.}
+    \IfFileExists{../data/results/demo_sintetico_sobreposicao.png}{
+        \includegraphics[width=0.85\textwidth]{../data/results/demo_sintetico_sobreposicao.png}
+    }{
+        \fbox{\parbox[c][5cm][c]{0.85\textwidth}{\centering Execute o notebook para gerar uma imagem de sobreposição em \texttt{data/results/}.}}
+    }
+    \caption{Exemplo de sobreposição das vias detectadas sobre a imagem original.}
     \label{fig:sobreposicao}
 \end{figure}
 
 \begin{figure}[H]
     \centering
-    \resultimage{demo_sintetico_esqueleto.png}{width=0.78\textwidth}
-    \caption{Esqueleto extraído da máscara binária.}
-    \label{fig:esqueleto}
-\end{figure}
-
-\begin{figure}[H]
-    \centering
-    \resultimage{demo_sintetico_grafo.png}{width=0.78\textwidth}
-    \caption{Grafo extraído a partir do esqueleto da malha detectada.}
+    \IfFileExists{../data/results/demo_sintetico_grafo.png}{
+        \includegraphics[width=0.85\textwidth]{../data/results/demo_sintetico_grafo.png}
+    }{
+        \fbox{\parbox[c][5cm][c]{0.85\textwidth}{\centering Execute o notebook para gerar a visualização do grafo em \texttt{data/results/}.}}
+    }
+    \caption{Exemplo de grafo extraído da malha viária.}
     \label{fig:grafo}
 \end{figure}
 
-\subsection{Métricas auxiliares}
+\section{Exemplos de Resultados}
 
-Na execução sintética presente em \texttt{data/results/}, o pipeline registrou as métricas da Tabela~\ref{tab:metricas}. Elas não substituem métricas supervisionadas, mas ajudam a verificar coerência, volume de detecção e complexidade topológica.
+As saídas esperadas para cada imagem são:
 
-\begin{table}[H]
-    \centering
-    \caption{Métricas auxiliares da execução de demonstração.}
-    \label{tab:metricas}
-    \begin{tabular}{lr}
-        \toprule
-        Métrica & Valor \\
-        \midrule
-        Razão de pixels classificados como via & 7,47\% \\
-        Pixels de via & 44.037 \\
-        Componentes na máscara & 31 \\
-        Nós no maior componente do grafo & 18 \\
-        Arestas no maior componente do grafo & 19 \\
-        Componentes antes da seleção do maior grafo & 33 \\
-        Pixels classificados como asfalto & 24.469 \\
-        Pixels classificados como terra & 19.568 \\
-        \bottomrule
-    \end{tabular}
-\end{table}
+\begin{itemize}[noitemsep]
+    \item imagem segmentada, com asfalto em azul e terra em laranja;
+    \item imagem original com vias sobrepostas;
+    \item máscara binária das vias;
+    \item esqueleto da malha detectada;
+    \item grafo visual desenhado sobre a imagem;
+    \item arquivos \texttt{JSON} e \texttt{GraphML} contendo vértices e arestas.
+\end{itemize}
+
+O arquivo JSON exportado contém uma lista de nós com coordenadas, tipo do vértice e uma lista de arestas com origem, destino, comprimento aproximado em pixels e pontos do caminho. O GraphML permite abrir o grafo em ferramentas externas de análise de redes.
 
 \section{Análise de Desempenho}
 
-Como o projeto não inclui máscaras anotadas, a avaliação é qualitativa. Os critérios observados foram:
+A avaliação proposta é principalmente qualitativa, adequada ao escopo do trabalho e à ausência de máscaras anotadas. Os critérios analisados são:
 
-\begin{itemize}
+\begin{itemize}[noitemsep]
     \item continuidade das vias segmentadas;
-    \item preservação de cruzamentos e bifurcações;
-    \item coerência visual da classificação asfalto/terra;
-    \item redução de regiões compactas que não representam vias;
-    \item qualidade do esqueleto como aproximação topológica;
-    \item conectividade do grafo exportado.
+    \item preservação de cruzamentos e interseções;
+    \item quantidade de falsos positivos em telhados, solos expostos e sombras;
+    \item quantidade de falsos negativos em vias estreitas ou cobertas por árvores;
+    \item coerência do grafo exportado;
+    \item robustez visual em escalas, rotações e regiões diferentes.
 \end{itemize}
 
-O resultado demonstra que a combinação de cor, textura e estrutura linear é capaz de recuperar trechos principais da malha e gerar um grafo inspecionável. Ao mesmo tempo, a figura segmentada evidencia falsos positivos, especialmente em objetos com cor ou textura parecida com vias. Essa limitação é esperada em uma abordagem sem treinamento supervisionado e reforça a importância de análise crítica em vez de uma conclusão baseada apenas em imagens visualmente agradáveis.
+Como métrica auxiliar, o notebook registra razão de pixels classificados como via, número de nós, número de arestas, quantidade de pixels classificados como asfalto e quantidade de pixels classificados como terra.
 
 \section{Dificuldades Encontradas}
 
-O problema é difícil porque a aparência visual de uma via muda muito entre regiões, escalas, sensores e condições de iluminação. Estradas asfaltadas podem se confundir com telhados, estacionamentos e sombras. Estradas de terra podem se confundir com solo exposto, talhões agrícolas e terrenos sem vegetação.
+O principal desafio é a alta variabilidade visual das imagens de satélite. Vias asfaltadas podem ter aparência semelhante a telhados, estacionamentos e sombras. Vias de terra podem se confundir com solo exposto, áreas agrícolas e terrenos sem vegetação. Além disso, árvores e construções podem interromper visualmente uma via, dificultando a continuidade da máscara e a extração correta do grafo.
 
-Outro desafio é a extração topológica. Pequenas falhas na máscara podem quebrar uma via em vários componentes, enquanto ruídos conectados podem criar cruzamentos inexistentes. Por isso, o grafo resultante deve ser interpretado como uma aproximação da estrutura viária, não como uma reconstrução cartográfica perfeita.
+Outro desafio é a generalização. Parâmetros muito específicos para uma imagem reduzem o desempenho em outras regiões. Por isso, o sistema usa limiares relativos, percentis e critérios combinados, em vez de depender de valores fixos ajustados manualmente para um único cenário.
 
 \section{Possíveis Melhorias Futuras}
 
-Melhorias relevantes incluem:
+Como melhorias futuras, recomenda-se:
 
-\begin{itemize}
-    \item usar uma base anotada para medir precisão, revocação, F1-score e IoU;
-    \item treinar uma rede de segmentação, como U-Net, DeepLab ou SegFormer;
-    \item calibrar limiares por validação cruzada em múltiplas cidades;
-    \item aplicar fechamento topológico para reconectar quebras pequenas;
-    \item remover falsos positivos com descritores de forma ou classificador supervisionado;
-    \item comparar a malha extraída com dados do OpenStreetMap;
-    \item incorporar imagens multiespectrais, quando disponíveis.
+\begin{itemize}[noitemsep]
+    \item incluir uma base anotada para avaliar precisão, revocação, F1-score e IoU;
+    \item treinar ou adaptar uma rede neural de segmentação, como U-Net, DeepLab ou SegFormer;
+    \item usar dados multiespectrais quando disponíveis;
+    \item aplicar refinamento topológico para conectar quebras pequenas no grafo;
+    \item integrar informações externas, como OpenStreetMap, para validação;
+    \item separar vias urbanas, rurais e estacionamentos com um classificador supervisionado.
 \end{itemize}
 
 \section{Conclusão}
 
-O sistema desenvolvido mostra que técnicas clássicas de visão computacional podem formar uma solução completa para detectar vias, gerar visualizações intermediárias e reconstruir uma malha viária aproximada como grafo. A principal vantagem da abordagem é a interpretabilidade: cada etapa pode ser visualizada, explicada e ajustada.
-
-A solução também deixa claras suas limitações. Sem dados anotados e sem aprendizado supervisionado, o método depende de hipóteses visuais que podem falhar em cenários complexos. Ainda assim, a entrega atende ao objetivo do trabalho ao integrar reconhecimento de padrões, segmentação, morfologia, esqueletonização e grafos em um fluxo executável e documentado.
+O sistema desenvolvido demonstra que técnicas clássicas de visão computacional podem ser combinadas para detectar vias e reconstruir uma malha viária aproximada em imagens de satélite. A solução não busca perfeição absoluta, pois o problema possui complexidade real de pesquisa, mas oferece uma base funcional, interpretável e extensível. Além disso, a exportação do grafo permite análises posteriores da conectividade da rede viária.
 
 \begin{thebibliography}{9}
 
@@ -311,20 +211,20 @@ R. Szeliski.
 \textit{Computer Vision: Algorithms and Applications}.
 Springer, 2ª edição, 2022.
 
-\bibitem{opencv}
-OpenCV Team.
-\textit{OpenCV Documentation}.
-Disponível em: \url{https://docs.opencv.org/}.
+\bibitem{networkx}
+NetworkX Developers.
+\textit{NetworkX Documentation}.
+Disponível em: \url{https://networkx.org/}.
 
 \bibitem{skimage}
 scikit-image Developers.
 \textit{scikit-image: Image processing in Python}.
 Disponível em: \url{https://scikit-image.org/}.
 
-\bibitem{networkx}
-NetworkX Developers.
-\textit{NetworkX Documentation}.
-Disponível em: \url{https://networkx.org/}.
+\bibitem{opencv}
+OpenCV Team.
+\textit{OpenCV Documentation}.
+Disponível em: \url{https://docs.opencv.org/}.
 
 \end{thebibliography}
 
