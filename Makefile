@@ -11,11 +11,11 @@ report:
 	$(PDFLATEX) -interaction=nonstopmode -halt-on-error -output-directory=relatorio relatorio/main.tex
 
 slides:
-	$(PDFLATEX) -interaction=nonstopmode -halt-on-error -output-directory=slide slide/main.tex
-	$(PDFLATEX) -interaction=nonstopmode -halt-on-error -output-directory=slide slide/main.tex
+	$(PDFLATEX) -interaction=nonstopmode -halt-on-error -output-directory=apresentacao apresentacao/main.tex
+	$(PDFLATEX) -interaction=nonstopmode -halt-on-error -output-directory=apresentacao apresentacao/main.tex
 
 pdf: report slides
 
 clean-latex:
 	rm -f relatorio/*.aux relatorio/*.log relatorio/*.out relatorio/*.toc relatorio/*.nav relatorio/*.snm relatorio/*.vrb
-	rm -f slide/*.aux slide/*.log slide/*.out slide/*.toc slide/*.nav slide/*.snm slide/*.vrb
+	rm -f apresentacao/*.aux apresentacao/*.log apresentacao/*.out apresentacao/*.toc apresentacao/*.nav apresentacao/*.snm apresentacao/*.vrb
