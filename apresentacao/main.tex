@@ -41,7 +41,7 @@
 }
 
 % METADADOS
-\title{Detecção de Malha Viária em\\Imagens de Satélite}
+\title{Detecção de Malha Viária em Imagens de Satélite}
 \subtitle{Uma Abordagem Evolutiva com Visão Computacional Clássica}
 \author{Beatriz Vocurca Frade \and Johnatan Augusto M. do Carmo \and Marina Alves Resende}
 \institute{Universidade Federal de Minas Gerais\\Reconhecimento de Padrões -- PPGEE}
@@ -207,8 +207,10 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
   \item Top-hat com linhas longas respondia a bordas de campos
   \item Frangi com $\sigma$ grande demais detectava variações de campo
 \end{itemize}
-  \includegraphics[width=\linewidth, height=2.15cm, keepaspectratio]{v2_rural.png}
-  \\\centering\small V2 -- rural (antes dos ajustes)
+  \begin{center}
+  \includegraphics[width=\linewidth, height=3.0cm, keepaspectratio]{v2_rural.png}\\
+  {\small V2 -- rural (antes dos ajustes)}
+  \end{center}
 \column{0.48\textwidth}
 \textbf{Após ajustes de parâmetros:}
 \begin{itemize}
@@ -217,33 +219,39 @@ $\text{prob} = 0{,}65 \cdot \max(\text{Frangi},\,\text{TopHat}) + 0{,}35 \cdot \
   \item Transformada de distância filtra largura máxima ($\leq$14 px)
   \item Resultado visivelmente mais limpo: menos blobs de campo
 \end{itemize}
-  \includegraphics[width=\linewidth, height=2.15cm, keepaspectratio]{v2_rural_ajustes.png}
-  \\\centering\small V2 -- rural (após ajustes)
+  \begin{center}
+  \includegraphics[width=\linewidth, height=2.8cm, keepaspectratio]{v2_rural_ajustes.png}\\
+  {\small V2 -- rural (após ajustes)}
+  \end{center}
 \end{columns}
 \end{frame}
 
-\begin{frame}[t]{Versão 2 -- Urbano e Tentativa de Grafo}
+\begin{frame}[t]{Versão 2 -- Urbano e Melhoria do Grafo}
 \scriptsize
 \begin{columns}[T,onlytextwidth]
 \column{0.48\textwidth}
 \textbf{Cena urbana após ajustes:}
 \begin{itemize}
-  \item Ruas principais detectadas
-  \item Telhados de tonalidade cinza ainda confundem
-  \item Parâmetros únicos: compromisso entre urbano e rural
+  \item Parâmetros ajustados para rural não generalizaram para urbano
+  \item Máscara quase vazia: quase nenhuma via detectada
+  \item Telhados e estacionamentos amplificam os falsos positivos
 \end{itemize}
-  \includegraphics[width=\linewidth, height=2.2cm, keepaspectratio]{v2_urbana_ajustes.png}
-  \\\centering\small V2 -- urbana
+  \begin{center}
+  \includegraphics[width=\linewidth, height=2.8cm, keepaspectratio]{v2_urbana_ajustes.png}\\
+  {\small V2 -- urbana (péssima generalização)}
+  \end{center}
 \column{0.48\textwidth}
-\textbf{Tentativa de extração de grafo:}
+\textbf{Melhoria do algoritmo de grafo:}
 \begin{itemize}
-  \item Esqueleto + detecção de nós por grau 8-conectado
-  \item Grafo gerado, mas qualidade dependia diretamente da máscara
-  \item Máscara com falsos positivos $\Rightarrow$ grafo fragmentado e ruidoso
-  \item \textbf{Decisão:} priorizar qualidade da máscara antes de investir no grafo
+  \item Testado no urbano inicial (máscara mais densa -- 23{,}5\% vias)
+  \item Antes: esqueleto inteiro resultava em 1 único subgrafo conectado
+  \item Melhoria: subgrafo independente por componente conexo da máscara
+  \item Após: N subgrafos gerados conforme regiões detectadas
 \end{itemize}
-  \includegraphics[width=\linewidth, height=2.2cm, keepaspectratio]{v2_rural_ajustes_grafos.png}
-  \\\centering\small Grafo sobre máscara com ruído
+  \begin{center}
+  \includegraphics[width=\linewidth, height=2.5cm, keepaspectratio]{v2_rural_ajustes_grafos.png}\\
+  {\small Após melhoria: múltiplos subgrafos por componente}
+  \end{center}
 \end{columns}
 \end{frame}
 
