@@ -7,5 +7,16 @@ relatorio/*.aux
 relatorio/*.log
 relatorio/*.out
 relatorio/*.toc
+relatorio/*.nav
+relatorio/*.snm
+relatorio/*.vrb
 relatorio/*.pdf
 
+slide/*.aux
+slide/*.log
+slide/*.out
+slide/*.toc
+slide/*.nav
+slide/*.snm
+slide/*.vrb
+slide/*.pdf
