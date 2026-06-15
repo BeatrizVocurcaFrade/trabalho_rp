@@ -59,7 +59,7 @@
 }
 
 \title{Detecção e Reconstrução de Malha Viária}
-\subtitle{Reconhecimento de Padrões em Imagens de Satélite}
+\subtitle{Trabalho Prático de Reconhecimento de Padrões}
 \author{Beatriz Vocurca Frade \and Johnatan Augusto Moreira do Carmo \and Marina Alves Resende}
 \date{\today}
 
@@ -77,31 +77,32 @@
     \vspace{1.1cm}
     {\Huge\bfseries Detecção e\\Reconstrução de\\Malha Viária\par}
     \vspace{0.35cm}
-    {\large Imagens de satélite + visão computacional clássica\par}
+    {\large Reconhecimento de padrões em imagens de satélite\par}
     \vspace{0.75cm}
-    \pill{RoadBlue}{segmentação}
-    \pill{RoadOrange}{morfologia}
-    \pill{SignalRed}{grafos}
+    \pill{RoadBlue}{atributos}
+    \pill{RoadOrange}{classificação}
+    \pill{SignalRed}{estrutura}
     \vfill
     {\small Beatriz Vocurca Frade \quad Johnatan Augusto Moreira do Carmo \quad Marina Alves Resende}
 \end{frame}
 
-\begin{frame}{Problema}
+\begin{frame}{Objetivo do Trabalho}
     \begin{columns}[T,totalwidth=\textwidth]
-        \begin{column}{0.48\textwidth}
-            \large Identificar vias e reconstruir sua conectividade a partir de uma imagem.
+        \begin{column}{0.47\textwidth}
+            \large A partir de uma imagem de satélite, reconhecer padrões visuais associados a vias.
             \vspace{0.35cm}
 
             \begin{itemize}
-                \item vias asfaltadas e de terra;
-                \item cruzamentos e extremidades;
-                \item sobreposição visual;
-                \item grafo exportável.
+                \item identificar regiões de via;
+                \item distinguir asfalto e terra;
+                \item sobrepor a detecção;
+                \item reconstruir conectividade;
+                \item exportar grafo da malha.
             \end{itemize}
         \end{column}
-        \begin{column}{0.48\textwidth}
+        \begin{column}{0.49\textwidth}
             \begin{tikzpicture}
-                \node[inner sep=0pt] (img) {\resultimage{demo_sintetico_sobreposicao.png}{width=0.94\linewidth}};
+                \node[inner sep=0pt] (img) {\resultimage{demo_sintetico_sobreposicao.png}{height=0.62\textheight}};
                 \draw[RoadBlue,line width=2pt] (img.south west) -- ++(1.35,0);
                 \draw[RoadOrange,line width=2pt] ([xshift=1.45cm]img.south west) -- ++(1.35,0);
             \end{tikzpicture}
@@ -109,34 +110,76 @@
     \end{columns}
 \end{frame}
 
-\begin{frame}{Desafios}
+\begin{frame}{Formulação em Reconhecimento de Padrões}
+    \begin{columns}[T,totalwidth=\textwidth]
+        \begin{column}{0.50\textwidth}
+            \large Cada pixel ou pequena vizinhança é tratado como uma amostra.
+            \vspace{0.25cm}
+
+            \scriptsize
+            \[
+                x \rightarrow
+                \phi(x)=
+                [c_{rgb}, c_{hsv}, l_{lab}, \sigma_{local}, s_{linear}]
+            \]
+            \[
+                \omega \in \{fundo, asfalto, terra\}
+            \]
+
+            \begin{itemize}
+                \item \(x\): padrão observado na imagem;
+                \item \(\phi(x)\): vetor de características;
+                \item \(\omega\): classe estimada pelo sistema.
+            \end{itemize}
+        \end{column}
+        \begin{column}{0.45\textwidth}
+            \begin{center}
+                \begin{tikzpicture}[node distance=0.2cm]
+                    \node[draw=RoadBlue!45,fill=RoadBlue!9,rounded corners=3pt,minimum width=3.1cm,minimum height=0.72cm,align=center] (a) {\scriptsize amostra};
+                    \node[draw=RoadBlue!45,fill=RoadBlue!9,rounded corners=3pt,minimum width=3.1cm,minimum height=0.72cm,align=center,below=of a] (b) {\scriptsize atributos};
+                    \node[draw=RoadOrange!45,fill=RoadOrange!9,rounded corners=3pt,minimum width=3.1cm,minimum height=0.72cm,align=center,below=of b] (c) {\scriptsize decisão};
+                    \node[draw=SignalRed!45,fill=SignalRed!9,rounded corners=3pt,minimum width=3.1cm,minimum height=0.72cm,align=center,below=of c] (d) {\scriptsize classe};
+                    \draw[->,line width=1.3pt,Ink!45] (a) -- (b);
+                    \draw[->,line width=1.3pt,Ink!45] (b) -- (c);
+                    \draw[->,line width=1.3pt,Ink!45] (c) -- (d);
+                \end{tikzpicture}
+            \end{center}
+            \vspace{0.25cm}
+
+            \small
+            A abordagem implementada é explicável: usa regras determinísticas em vez de treinamento supervisionado, porque a entrega não possui máscaras anotadas.
+        \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Desafios de Generalização}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.31\textwidth}
-            \pill{RoadBlue}{aparência variável}
-            \vspace{0.25cm}
+            \pill{RoadBlue}{variabilidade}
+            \vspace{0.24cm}
 
-            Mesma classe, cores e texturas diferentes conforme sensor, iluminação, escala e região.
+            \small Cidades, sensores, escala, iluminação e resolução mudam a aparência da mesma classe.
         \end{column}
         \begin{column}{0.31\textwidth}
-            \pill{RoadOrange}{falsos positivos}
-            \vspace{0.25cm}
+            \pill{RoadOrange}{ambiguidade}
+            \vspace{0.24cm}
 
-            Telhados, solo exposto, estacionamentos e sombras podem parecer vias.
+            \small Telhados, solo exposto, estacionamentos e sombras podem gerar padrões parecidos com vias.
         \end{column}
         \begin{column}{0.31\textwidth}
-            \pill{SignalRed}{topologia frágil}
-            \vspace{0.25cm}
+            \pill{SignalRed}{topologia}
+            \vspace{0.24cm}
 
-            Pequenas quebras na máscara podem quebrar arestas ou criar cruzamentos falsos.
+            \small Pequenas falhas na máscara quebram arestas; ruídos conectados criam cruzamentos falsos.
         \end{column}
     \end{columns}
 
-    \vspace{0.75cm}
+    \vspace{0.65cm}
     \begin{center}
         \begin{tikzpicture}[node distance=0.25cm]
             \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm] (a) {imagem};
-            \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of a] (b) {máscara};
-            \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of b] (c) {esqueleto};
+            \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of a] (b) {classes};
+            \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of b] (c) {topologia};
             \node[draw=Ink!15,fill=Panel,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of c] (d) {grafo};
             \draw[RoadBlue,line width=1.5pt,->] (a) -- (b);
             \draw[RoadBlue,line width=1.5pt,->] (b) -- (c);
@@ -145,14 +188,14 @@
     \end{center}
 \end{frame}
 
-\begin{frame}{Pipeline Algorítmico}
+\begin{frame}{Pipeline do Sistema}
     \begin{center}
         \begin{tikzpicture}[node distance=0.23cm]
-            \node[draw=RoadBlue!30,fill=RoadBlue!8,rounded corners=3pt,minimum width=2.35cm,minimum height=0.95cm] (a) {pré-processamento};
-            \node[draw=RoadBlue!30,fill=RoadBlue!8,rounded corners=3pt,minimum width=2.35cm,minimum height=0.95cm,right=of a] (b) {descritores};
-            \node[draw=RoadOrange!45,fill=RoadOrange!10,rounded corners=3pt,minimum width=2.35cm,minimum height=0.95cm,right=of b] (c) {segmentação};
-            \node[draw=RoadOrange!45,fill=RoadOrange!10,rounded corners=3pt,minimum width=2.35cm,minimum height=0.95cm,right=of c] (d) {morfologia};
-            \node[draw=SignalRed!45,fill=SignalRed!8,rounded corners=3pt,minimum width=2.35cm,minimum height=0.95cm,right=of d] (e) {grafo};
+            \node[draw=RoadBlue!30,fill=RoadBlue!8,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm] (a) {\scriptsize entrada};
+            \node[draw=RoadBlue!30,fill=RoadBlue!8,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of a] (b) {\scriptsize atributos};
+            \node[draw=RoadOrange!45,fill=RoadOrange!10,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of b] (c) {\scriptsize classificador};
+            \node[draw=RoadOrange!45,fill=RoadOrange!10,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of c] (d) {\scriptsize morfologia};
+            \node[draw=SignalRed!45,fill=SignalRed!8,rounded corners=3pt,minimum width=2.15cm,minimum height=0.9cm,right=of d] (e) {\scriptsize grafo};
             \draw[->,line width=1.4pt,Ink!45] (a) -- (b);
             \draw[->,line width=1.4pt,Ink!45] (b) -- (c);
             \draw[->,line width=1.4pt,Ink!45] (c) -- (d);
@@ -164,29 +207,51 @@
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.48\textwidth}
             \begin{itemize}
-                \item redimensionamento preservando proporção;
-                \item filtro bilateral para reduzir ruído;
-                \item CLAHE no canal L do espaço Lab.
+                \item entrada: imagens em \texttt{data/raw};
+                \item pré-processamento: bilateral + CLAHE;
+                \item descritores: cor, textura e linearidade.
             \end{itemize}
         \end{column}
         \begin{column}{0.48\textwidth}
             \begin{itemize}
-                \item descritores RGB, HSV e textura local;
-                \item máscara por regras combinadas;
-                \item esqueleto e grafo 8-conectado.
+                \item decisão: fundo, asfalto ou terra;
+                \item refinamento: componentes e forma;
+                \item saída: imagens, JSON e GraphML.
             \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Regra de Segmentação}
+\begin{frame}{Extração de Características}
     \begin{columns}[T,totalwidth=\textwidth]
-        \begin{column}{0.48\textwidth}
+        \begin{column}{0.44\textwidth}
+            \large O padrão ``via'' é descrito por evidências complementares.
+            \vspace{0.3cm}
+
+            \small
+            \begin{tabular}{ll}
+                \toprule
+                Atributo & Papel \\
+                \midrule
+                RGB & relação entre canais \\
+                HSV & matiz, saturação, sombra \\
+                Lab & luminância realçada \\
+                textura & homogeneidade local \\
+                linearidade & formato alongado \\
+                \bottomrule
+            \end{tabular}
+        \end{column}
+        \begin{column}{0.51\textwidth}
             \resultimage{demo_sintetico_segmentada.png}{height=0.66\textheight}
         \end{column}
+    \end{columns}
+\end{frame}
+
+\begin{frame}{Classificador por Regras}
+    \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.48\textwidth}
-            \large A máscara final combina cor, textura e linearidade.
-            \vspace{0.2cm}
+            \large A decisão combina conhecimento de domínio e limiares adaptados à imagem.
+            \vspace{0.25cm}
 
             \scriptsize
             \begin{align*}
@@ -195,28 +260,30 @@
                 T &= matiz_{quente} \cap solo_{rgb} \cap homog \cap visivel
             \end{align*}
 
-            \vspace{-0.05cm}
             \small
             \begin{itemize}
-                \item \(L\): suporte linear por bordas/cristas;
-                \item vegetação: excesso relativo de verde;
-                \item sombra: baixo valor no canal HSV.
+                \item \(A\): hipótese de asfalto;
+                \item \(T\): hipótese de terra;
+                \item \(L\): suporte linear exigido para terra.
             \end{itemize}
+        \end{column}
+        \begin{column}{0.47\textwidth}
+            \resultimage{demo_sintetico_mascara.png}{height=0.64\textheight}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Suporte Linear}
+\begin{frame}{Suporte Linear e Invariância}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.48\textwidth}
-            \Large A via deve parecer uma estrutura alongada.
-            \vspace{0.35cm}
+            \large Vias são padrões alongados, não apenas regiões de uma cor específica.
+            \vspace{0.25cm}
 
             \small
             \begin{itemize}
                 \item Canny detecta bordas locais;
-                \item kernels lineares dilatam bordas em 6 orientações;
-                \item resposta Hessiana multi-escala destaca cristas;
+                \item kernels lineares cobrem 0° a 150°;
+                \item Hessiana multi-escala destaca cristas;
                 \item solo de terra só entra se houver \(L > 0{,}15\).
             \end{itemize}
         \end{column}
@@ -239,13 +306,13 @@
     \end{columns}
 \end{frame}
 
-\begin{frame}{Pós-processamento}
+\begin{frame}{Segmentação e Morfologia}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.58\textwidth}
             \resultimage{demo_sintetico_sobreposicao.png}{height=0.72\textheight}
         \end{column}
         \begin{column}{0.38\textwidth}
-            \large A máscara bruta é refinada antes da topologia.
+            \large A classificação pixel a pixel precisa de coerência espacial.
             \vspace{0.22cm}
 
             \small
@@ -253,20 +320,20 @@
                 \item fechamento conecta pequenas quebras;
                 \item abertura remove ruído isolado;
                 \item componentes pequenos são descartados;
-                \item blobs compactos grandes são penalizados;
-                \item regiões alongadas são preservadas.
+                \item regiões compactas demais são penalizadas;
+                \item a sobreposição permite inspeção visual.
             \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Esqueleto}
+\begin{frame}{Reconhecimento Estrutural}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.50\textwidth}
             \resultimage{demo_sintetico_esqueleto.png}{height=0.68\textheight}
         \end{column}
         \begin{column}{0.46\textwidth}
-            \large A máscara vira uma estrutura topológica.
+            \large Depois da segmentação, o padrão deixa de ser só pixel e vira estrutura.
             \vspace{0.25cm}
 
             \small
@@ -278,13 +345,13 @@
                 \item grau 1: extremidade;
                 \item grau 2: ponto intermediário;
                 \item grau \(\geq 3\): interseção;
-                \item componentes de nós são agrupados por centróide.
+                \item agrupamento por componentes define os nós.
             \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Construção do Grafo}
+\begin{frame}{Grafo da Malha Viária}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.58\textwidth}
             \resultimage{demo_sintetico_grafo.png}{height=0.72\textheight}
@@ -297,8 +364,8 @@
             \begin{itemize}
                 \item \(V\): extremidades e interseções;
                 \item \(E\): caminhos do esqueleto entre vértices;
-                \item peso: comprimento aproximado em pixels;
-                \item geometria: sequência de coordenadas \((x,y)\);
+                \item peso: comprimento em pixels;
+                \item geometria: coordenadas \((x,y)\);
                 \item saída: maior componente conectado.
             \end{itemize}
 
@@ -308,7 +375,7 @@
     \end{columns}
 \end{frame}
 
-\begin{frame}{Métricas da Execução}
+\begin{frame}{Resultados da Execução}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.50\textwidth}
             \begin{table}
@@ -329,7 +396,7 @@
             \end{table}
         \end{column}
         \begin{column}{0.45\textwidth}
-            \large Interpretação.
+            \large O que essas métricas dizem.
             \vspace{0.25cm}
 
             \small
@@ -337,59 +404,60 @@
                 \item métricas não substituem máscara anotada;
                 \item ajudam a validar volume da segmentação;
                 \item permitem verificar complexidade topológica;
-                \item indicam falsos positivos e fragmentação.
+                \item revelam fragmentação e falsos positivos.
             \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Limitações}
+\begin{frame}{Avaliação Crítica}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.48\textwidth}
-            \Large O método é explicável, mas não universal.
+            \Large Pontos fortes.
             \vspace{0.3cm}
 
             \begin{itemize}
-                \item sem base anotada, avaliação é qualitativa;
-                \item objetos parecidos com vias ainda geram ruído;
-                \item o grafo depende da continuidade da máscara.
+                \item pipeline completo e executável;
+                \item decisões interpretáveis;
+                \item saídas visuais e topológicas;
+                \item não depende de treinamento.
             \end{itemize}
         \end{column}
         \begin{column}{0.48\textwidth}
-            \Large Próximos passos.
+            \Large Limitações.
             \vspace{0.3cm}
 
             \begin{itemize}
-                \item medir IoU, precisão, revocação e F1;
-                \item testar U-Net, DeepLab ou SegFormer;
-                \item comparar com OpenStreetMap;
-                \item refinar conectividade topológica.
+                \item avaliação sem ground truth;
+                \item sensível a iluminação e sensor;
+                \item falsos positivos visualmente parecidos;
+                \item grafo depende da continuidade da máscara.
             \end{itemize}
         \end{column}
     \end{columns}
 \end{frame}
 
-\begin{frame}{Conclusão}
+\begin{frame}{Melhorias e Conclusão}
     \begin{center}
-        {\Huge\bfseries Visão computacional clássica\\com saída topológica}
+        {\Huge\bfseries Reconhecer padrões\\e reconstruir estrutura}
     \end{center}
 
-    \vspace{0.45cm}
+    \vspace{0.35cm}
     \begin{columns}[T,totalwidth=\textwidth]
         \begin{column}{0.32\textwidth}
-            \pill{RoadBlue}{segmenta}
+            \pill{RoadBlue}{avaliar}
 
-            Identifica pixels candidatos a vias.
+            IoU, precisão, revocação, F1 e comparação com OpenStreetMap.
         \end{column}
         \begin{column}{0.32\textwidth}
-            \pill{RoadOrange}{interpreta}
+            \pill{RoadOrange}{aprender}
 
-            Separa asfalto e terra para visualização.
+            U-Net, DeepLab ou SegFormer com base anotada.
         \end{column}
         \begin{column}{0.32\textwidth}
-            \pill{SignalRed}{reconstrói}
+            \pill{SignalRed}{refinar}
 
-            Exporta nós, arestas e conectividade.
+            Fechamento topológico e remoção supervisionada de ruído.
         \end{column}
     \end{columns}
 
