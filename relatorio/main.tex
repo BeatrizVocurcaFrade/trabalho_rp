@@ -77,7 +77,6 @@
 Este relatório apresenta o desenvolvimento de um sistema de visão computacional clássica para detectar e reconstruir malhas viárias em imagens de satélite. A solução explora descritores de cor, textura e estrutura linear, combinados com pré-processamento, morfologia matemática, esqueletonização e extração de grafos. O trabalho foi conduzido de forma evolutiva, partindo de uma segmentação inicial por cor e chegando a uma abordagem híbrida para cenários urbanos e rurais. Como não há máscaras de referência anotadas, a avaliação é qualitativa e acompanhada por métricas auxiliares extraídas de uma demonstração controlada.
 \end{abstract}
 
-\newpage
 \tableofcontents
 \newpage
 
@@ -292,17 +291,77 @@ O pipeline produz visualizações intermediárias e saídas topológicas. A Tabe
     \label{tab:saidas}
     \begin{tabularx}{\textwidth}{>{\ttfamily}lX}
         \toprule
-        Arquivo & Conteúdo & cuzao \\
+        Arquivo & Conteúdo \\
         \midrule
-        *\_mascara.png & máscara binária de vias detectadas & cuzao \\
-        *\_segmentada.png & visualização por classe: asfalto em azul e terra em laranja & cuzao \\
-        *\_sobreposicao.png & vias detectadas sobre a imagem original & cuzao \\
-        *\_esqueleto.png & esqueleto usado para extração topológica & cuzao \\
-        *\_grafo.png & grafo desenhado sobre a sobreposição & cuzao \\
-        *\_grafo.json & nós, arestas, métricas e geometria dos segmentos & cuzao \\
-        *\_grafo.graphml & grafo em formato compatível com ferramentas externas & cuzao \\
+        *\_mascara.png & máscara binária de vias detectadas \\
+        *\_segmentada.png & visualização por classe: asfalto em azul e terra em laranja \\
+        *\_sobreposicao.png & vias detectadas sobre a imagem original \\
+        *\_esqueleto.png & esqueleto usado para extração topológica \\
+        *\_grafo.png & grafo desenhado sobre a sobreposição \\
+        *\_grafo.json & nós, arestas, métricas e geometria dos segmentos \\
+        *\_grafo.graphml & grafo em formato compatível com ferramentas externas \\
         \bottomrule
     \end{tabularx}
+\end{table}
+
+\subsection{Demonstração controlada}
+
+Além das imagens reais, foi mantida uma demonstração sintética para validar o fluxo completo de saída. Esse caso não substitui avaliação em base anotada, mas permite verificar se segmentação, classificação visual, esqueletonização e grafo são produzidos de ponta a ponta.
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \resultimage{demo_sintetico_segmentada.png}{width=\textwidth}
+        \small Segmentação por classe visual.
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \resultimage{demo_sintetico_sobreposicao.png}{width=\textwidth}
+        \small Sobreposição na imagem original.
+    \end{minipage}
+    \caption{Visualizações principais da demonstração sintética.}
+    \label{fig:demo-segmentacao}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \resultimage{demo_sintetico_esqueleto.png}{width=\textwidth}
+        \small Esqueleto da máscara.
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \resultimage{demo_sintetico_grafo.png}{width=\textwidth}
+        \small Grafo extraído.
+    \end{minipage}
+    \caption{Reconstrução topológica na demonstração sintética.}
+    \label{fig:demo-grafo}
+\end{figure}
+
+Na execução sintética registrada em \texttt{data/results/} e \texttt{data/graphs/demo\_sintetico\_grafo.json}, foram obtidas as métricas da Tabela~\ref{tab:metricas}. Elas não medem precisão supervisionada, mas ajudam a avaliar o volume de detecção e a complexidade topológica da saída.
+
+\begin{table}[H]
+    \centering
+    \caption{Métricas auxiliares da execução de demonstração.}
+    \label{tab:metricas}
+    \begin{tabular}{lr}
+        \toprule
+        Métrica & Valor \\
+        \midrule
+        Razão de pixels classificados como via & 7,47\% \\
+        Pixels de via & 44.037 \\
+        Componentes na máscara & 31 \\
+        Nós no maior componente do grafo & 18 \\
+        Arestas no maior componente do grafo & 19 \\
+        Componentes antes da seleção do maior grafo & 33 \\
+        Pixels classificados como asfalto & 24.469 \\
+        Pixels classificados como terra & 19.568 \\
+        \bottomrule
+    \end{tabular}
 \end{table}
 
 \subsection{Análise qualitativa}
